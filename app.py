@@ -1,17 +1,17 @@
 import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import openai
+from openai import OpenAI
 import requests
 
 app = FastAPI()
 
 # Получаем API ключи из переменных окружения
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Устанавливаем ключ OpenAI из переменной окружения
+openai_api_key = os.getenv("OPENAI_API_KEY")  # Устанавливаем ключ OpenAI из переменной окружения
 currentsapi_key = os.getenv("CURRENTS_API_KEY")  # Устанавливаем ключ Currents API из переменной окружения
 
 # Проверяем, что оба API ключа заданы, иначе выбрасываем ошибку
-if not openai.api_key or not currentsapi_key:
+if not openai_api_key or not currentsapi_key:
     raise ValueError("Переменные окружения OPENAI_API_KEY и CURRENTS_API_KEY должны быть установлены")
 
 class Topic(BaseModel):
@@ -42,9 +42,12 @@ def get_recent_news(topic: str):
 def generate_content(topic: str):
     recent_news = get_recent_news(topic)  # Получаем последние новости по теме
 
+    # Инициализируем клиент OpenAI
+    client = OpenAI(api_key=openai_api_key)
+
     try:
         # Генерация заголовка для статьи
-        title = openai.ChatCompletion.create(
+        title_response = client.chat.completions.create(
             model="gpt-4o-mini",  # Используем модель GPT-4o-mini
             messages=[{
                 "role": "user", 
@@ -52,11 +55,11 @@ def generate_content(topic: str):
             }],
             max_tokens=60,  # Ограничиваем длину ответа
             temperature=0.5,  # Умеренная случайность
-            stop=["\n"]  # Прерывание на новой строке
-        ).choices[0].message.content.strip()
+        )
+        title = title_response.choices[0].message.content.strip()
 
         # Генерация мета-описания для статьи
-        meta_description = openai.ChatCompletion.create(
+        meta_description_response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{
                 "role": "user", 
@@ -64,11 +67,11 @@ def generate_content(topic: str):
             }],
             max_tokens=120,  # Увеличиваем лимит токенов для полного ответа
             temperature=0.5,
-            stop=["."]
-        ).choices[0].message.content.strip()
+        )
+        meta_description = meta_description_response.choices[0].message.content.strip()
 
         # Генерация полного контента статьи
-        post_content = openai.ChatCompletion.create(
+        post_content_response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{
                 "role": "user", 
@@ -87,7 +90,8 @@ def generate_content(topic: str):
             temperature=0.5,
             presence_penalty=0.6,  # Штраф за повторение фраз
             frequency_penalty=0.6
-        ).choices[0].message.content.strip()
+        )
+        post_content = post_content_response.choices[0].message.content.strip()
 
         # Возвращаем сгенерированный контент
         return {
